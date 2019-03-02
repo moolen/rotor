@@ -199,9 +199,10 @@ ECS integration uses the AWS API, similar to EC2.
 
 ```console
 docker run -d \
-  -e 'ROTOR_AWS_AWS_ACCESS_KEY_ID=<your aws access key>' \
-  -e 'ROTOR_AWS_AWS_REGION=<your aws region>' \
-  -e 'ROTOR_AWS_AWS_SECRET_ACCESS_KEY=<your secret access key>' \
+  -e 'ROTOR_ECS_AWS_ACCESS_KEY_ID=<your aws access key>' \
+  -e 'ROTOR_ECS_AWS_REGION=<your aws region>' \
+  -e 'ROTOR_ECS_AWS_SECRET_ACCESS_KEY=<your secret access key>' \
+  -e 'ROTOR_ECS_CLUSTERS=Test-Cluster' \
   -e 'ROTOR_CMD=ecs' \
   -p 50000:50000 \
   turbinelabs/rotor:0.19.0
