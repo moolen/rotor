@@ -442,56 +442,77 @@ func bindClusters(clusterTag string, state ecsState, tmpls []containerBindTempla
 					continue
 				}
 
-				// ... it's definition
-				tdefarn := arnValue(tinst.TaskDefinitionArn)
-				// ... and make sure it matches the task we're trying to match.
-				if tdefarn != tmpl.task {
+				// FARGATE
+				if *tinst.LaunchType == ecs.LaunchTypeFargate {
+					container := tinst.getContainer(tmpl.container)
+					if len(container.NetworkInterfaces) == 0 {
+						missing(tmpl.cluster, tmpl.service, "network interfaces")
+					}
+					if len(tmpl.ports) == 0 {
+						missing(tmpl.cluster, tmpl.service, "docker label ports")
+					}
+					addr := container.NetworkInterfaces[0].PrivateIpv4Address
+					c.Instances = append(
+						c.Instances,
+						mkInstance(clusterTag, "", *addr, tmpl.ports[0], tmpl, "", tarn))
+
+					// EC2
+				} else if *tinst.LaunchType == ecs.LaunchTypeEc2 {
+					// ... it's definition
+					tdefarn := arnValue(tinst.TaskDefinitionArn)
+					// ... and make sure it matches the task we're trying to match.
+					if tdefarn != tmpl.task {
+						continue
+					}
+
+					// Find the container host's metadata
+					ciarn := arnValue(tinst.ContainerInstanceArn)
+					cinst, ok := state.live.containerInstances[ciarn]
+					if !ok {
+						missing(tmpl.cluster, tmpl.service, string(ciarn))
+						continue
+					}
+
+					// a container instance is bound to a particular EC2 host
+					ec2id := ptr.StringValue(cinst.Ec2InstanceId)
+					ec2inst, ok := state.live.ec2Hosts[ec2id]
+					if !ok {
+						missing(tmpl.cluster, tmpl.service, fmt.Sprintf("EC2 host %s", ec2id))
+						continue
+					}
+
+					// ...with an IP address
+					ec2Host := ptr.StringValue(ec2inst.PrivateIpAddress)
+
+					// grab the container our template is for out of the task instance
+					container := tinst.getContainer(tmpl.container)
+					if container == nil {
+						missing(
+							tmpl.cluster,
+							tmpl.service,
+							fmt.Sprintf("container %s in task %s", tmpl.container, tarn))
+						continue
+					}
+
+					// find a host port bound to the container service port
+					hostPort, err := findPort(container, cSvcPort)
+					if err != nil {
+						missing(
+							tmpl.cluster,
+							tmpl.service,
+							fmt.Sprintf("container port %d not exposed on host %s", cSvcPort, container))
+						console.Error().Printf(err.Error())
+						continue
+					}
+
+					c.Instances = append(
+						c.Instances,
+						mkInstance(clusterTag, ec2id, ec2Host, hostPort, tmpl, ciarn, tarn))
+				} else {
+					console.Error().Printf("unsupported launch type: %s", *tinst.LaunchType)
 					continue
 				}
 
-				// Find the container host's metadata
-				ciarn := arnValue(tinst.ContainerInstanceArn)
-				cinst, ok := state.live.containerInstances[ciarn]
-				if !ok {
-					missing(tmpl.cluster, tmpl.service, string(ciarn))
-					continue
-				}
-
-				// a container instance is bound to a particular EC2 host
-				ec2id := ptr.StringValue(cinst.Ec2InstanceId)
-				ec2inst, ok := state.live.ec2Hosts[ec2id]
-				if !ok {
-					missing(tmpl.cluster, tmpl.service, fmt.Sprintf("EC2 host %s", ec2id))
-					continue
-				}
-
-				// ...with an IP address
-				ec2Host := ptr.StringValue(ec2inst.PrivateIpAddress)
-
-				// grab the container our template is for out of the task instance
-				container := tinst.getContainer(tmpl.container)
-				if container == nil {
-					missing(
-						tmpl.cluster,
-						tmpl.service,
-						fmt.Sprintf("container %s in task %s", tmpl.container, tarn))
-					continue
-				}
-
-				// find a host port bound to the container service port
-				hostPort, err := findPort(container, cSvcPort)
-				if err != nil {
-					missing(
-						tmpl.cluster,
-						tmpl.service,
-						fmt.Sprintf("container port %d not exposed on host %s", cSvcPort, container))
-					console.Error().Printf(err.Error())
-					continue
-				}
-
-				c.Instances = append(
-					c.Instances,
-					mkInstance(clusterTag, ec2id, ec2Host, hostPort, tmpl, ciarn, tarn))
 			}
 		}
 	}
