@@ -688,7 +688,7 @@ func getContainerInstances(
 	for tarn, t := range clusterTasks {
 		carn := arnValue(t.ContainerInstanceArn)
 		if carn == "" {
-			console.Error().Printf("Task %s contained container instance with no ARN", tarn)
+			console.Info().Printf("Task %s contained container instance with no ARN", tarn)
 			continue
 		}
 		ciids = append(ciids, carn)
